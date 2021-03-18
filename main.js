@@ -18,9 +18,10 @@ async function saveBalance(value) {
 
 /**
  * Sell product for $50
+ * ! Vulnerable to race conditions!
  * @param {String} product name of product
  */
-const _sell = async (product) => {
+const _unsafeSell = async (product) => {
   const balance = await loadBalance();
   console.log(`sell ${product} - balance loaded: ${balance}`);
   const newBalance = balance + 50;
@@ -29,19 +30,25 @@ const _sell = async (product) => {
 };
 
 // wrap sell function in mutex lock:
-const safeSell = async (name, ...args) => await mutex.run(_sell, name, ...args);
+const safeSell = async (...args) => await mutex.run(_unsafeSell, ...args);
 
-// const sellMeFirst = async (name, ...args) => await mutex.runPriority(_sell, name, ...args);
+// this one will skip the line
+const sellMeFirst = async (...args) => await mutex.runVip(_unsafeSell, ...args);
 
 const main = async () => {
   await Promise.all([
-    safeSell("grapes"),
+    safeSell("grapes"), // first to sell
     safeSell("olives"),
     safeSell("rice"),
     safeSell("beans"),
+    safeSell("potatoes"),
+    sellMeFirst("diamonds"), // second to sell
+    sellMeFirst("rubies"), // third
+    sellMeFirst("sapphires"), // fourth
   ]);
+  // expect to sell grapes->diamonds->rubies->sapphires->olives->etc.
   const balance = await loadBalance();
-  console.log(`Final balance: $${balance}`); // should be $200
+  console.log(`Final balance: $${balance}`); // should be $400
 };
 
 main();
