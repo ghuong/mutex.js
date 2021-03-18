@@ -1,5 +1,3 @@
-"use strict";
-
 const PriorityMutex = require("./priorityMutex");
 
 const randomDelay = () =>

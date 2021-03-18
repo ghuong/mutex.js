@@ -1,11 +1,21 @@
+const Mutex = require("./mutex");
+
 /**
  * Mutex implementation using Promises to prevent race conditions in concurrent programs
  * ! This will not prevent race conditions in parallel processes!
  * For more, see: https://www.nodejsdesignpatterns.com/blog/node-js-race-conditions/
  */
-function Mutex() {
-  //* The mutually exclusive lock that only one (concurrent) task at a time may hold:
-  let _currentLock = Promise.resolve(); // "resolved" represents "unlocked"
+class PriorityMutex {
+  constructor() {
+    this._currentLock = Promise.resolve(); // "resolved" represents "unlocked"
+    this._currentVipLock = this.setVipLock(); // VIP lock to wait for
+    this._unlockAllVipLocks; // unlocks all VIP locks
+    this._vipMutex = new Mutex();
+  }
+
+  setVipLock() {
+    this._currentVipLock = new Promise(resolve => this._unlockAllVipLocks = resolve);
+  }
 
   /**
    * * Attempt to acquire the currentLock
@@ -16,20 +26,27 @@ function Mutex() {
    * const unlock = await mutex.lock();
    * try { <do critical path> } finally { unlock(); }
    */
-  this.lock = () => {
+  lock() {
     let _unlock; // this is a function returned to caller to let them unlock once they're done
 
     //* represents a new "locked" lock, which will only be "unlocked" once its resolved
     const newLock = new Promise((resolve) => {
+      // At this point, we've released the lock
       // unlock will release this newLock (by resolving it)
-      _unlock = () => resolve(); // explicitly call resolve() w/ no args to discard a malicious caller's args
+      _unlock = async () => {
+        resolve(); // explicitly call resolve() w/ no args to discard a malicious caller's args
+      }
     });
 
     // Caller is promised the lock (once it's unlocked)
     // THEN, the promise resolves to the unlock function for the newLock
-    const promiseOfUnlock = _currentLock.then(() => _unlock);
+    const promiseOfUnlock = this._currentLock.then(() => {
+      // At this point, we've acquired the lock successfully...
+      return _unlock;
+    });
+
     // The next request will have to wait on this newLock (until caller is done and calls unlock)
-    _currentLock = newLock;
+    this._currentLock = newLock;
     // Return promise of the unlock function, which caller should await on
     return promiseOfUnlock;
   };
@@ -45,7 +62,7 @@ function Mutex() {
    *   const runProtected = async (...args) => await mutex.run(runCriticalPath, ...args);
    *   await runProtected("foo", "bar");
    */
-  this.run = async (callback, ...args) => {
+  async run(callback, ...args) {
     const unlock = await this.lock();
     try {
       return await callback(...args);
@@ -55,4 +72,4 @@ function Mutex() {
   };
 }
 
-module.exports = Mutex;
+module.exports = PriorityMutex;
