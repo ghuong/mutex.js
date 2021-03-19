@@ -1,10 +1,10 @@
-const PriorityMutex = require("./priorityMutex");
+const VipMutex = require("./vipMutex");
 
 const randomDelay = () =>
   new Promise((resolve) => setTimeout(resolve, Math.random() * 100));
 
 let balance = 0; // global balance
-const mutex = new PriorityMutex();
+const mutex = new VipMutex();
 
 async function loadBalance() {
   await randomDelay(); // simulate delay retrieving data from db
@@ -33,22 +33,39 @@ const _unsafeSell = async (product) => {
 const safeSell = async (...args) => await mutex.run(_unsafeSell, ...args);
 
 // this one will skip the line
-const sellMeFirst = async (...args) => await mutex.runVip(_unsafeSell, ...args);
+const vipSell = async (...args) => await mutex.runVip(_unsafeSell, ...args);
 
 const main = async () => {
+  console.log("This is what happens when you don't use a mutex:\n");
+  console.log(`Starting balance: $${balance}\n`);
+  await Promise.all([
+    _unsafeSell("grapes"),
+    _unsafeSell("olives"),
+    _unsafeSell("rice"),
+    _unsafeSell("beans"),
+    _unsafeSell("potatoes"),
+    _unsafeSell("carrots"),
+  ]);
+  // currentBalance = await loadBalance();
+  console.log(`\nFinal balance: $${balance}`); // should be $400, but might be less
+  console.log(`Expected balance: $300`);
+
+  balance = 0; // reset balance
+
+  console.log("\nNow with a mutex:\n");
+  console.log(`Starting balance: $${balance}\n`);
   await Promise.all([
     safeSell("grapes"), // first to sell
     safeSell("olives"),
     safeSell("rice"),
     safeSell("beans"),
-    safeSell("potatoes"),
-    sellMeFirst("diamonds"), // second to sell
-    sellMeFirst("rubies"), // third
-    sellMeFirst("sapphires"), // fourth
+    vipSell("diamonds"), // second to sell
+    vipSell("rubies"), // third
   ]);
   // expect to sell grapes->diamonds->rubies->sapphires->olives->etc.
-  const balance = await loadBalance();
-  console.log(`Final balance: $${balance}`); // should be $400
+  // const balance = await loadBalance();
+  console.log(`\nFinal balance: $${balance}`); // should be $300
+  console.log(`Expected balance: $300`);
 };
 
 main();
