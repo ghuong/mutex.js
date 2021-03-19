@@ -151,7 +151,15 @@ const safe = async () => await mutex.runVip(unsafe);
 
 ### Interesting Design Challenges
 
-If you look at the implementation for `vipMutex.js`, you'll notice it is _considerably_ more complicated than the basic `mutex.js`. In fact, it even contains a mutex in its mutex! The gist of it, though, is that instead of just the one Promise chain (previously described), there are two: one for normal tasks, and one for VIPs. The normal chain is exactly like before. The VIP chain, however, begins with a dummy locked Promise, which can only be unlocked by the mutex-holder.
+If you look at the implementation for `vipMutex.js`, you'll notice it is _considerably_ more complicated than the basic `mutex.js`. In fact, it even contains a mutex in its mutex!
+
+**Cancellable Promises: A Failed First Attempt**
+
+Another challenge faced, involved an unfortunate detour, a first attempt at implementing VIP tasks. I had initially attempted to "re-wire" the Promise chain and tack VIP tasks onto the beginning of it, re-wiring the `.then()` relationships, hijacking the `reject` method of the Promises to cancel out the existing Promise chain, but none of it worked. It turned out that Promises are immutable, and trying to hack them to be mutable was not the right strategy.
+
+**Back on Track: Two Promise Chains!**
+
+Later, I took a different approach that actually worked. The gist of it is that instead of just the one Promise chain (previously described), now there are two: one for normal tasks, and one for VIPs. The normal chain is exactly like before. The VIP chain, however, begins with a dummy locked Promise, which can only be unlocked by the mutex-holder.
 
 When the mutex-holder calls `unlock()`, it first checks for VIP tasks to let them go first, before resolving its lock to let the next non-VIP task go. It does this by unlocking the first dummy VIP in line, and then `await`ing on the last VIP in line (thereby "emptying" the VIP Promise chain).
 
@@ -160,7 +168,3 @@ Now, the major design challenge involved a potential race condition within the m
 The potential race condition was if, while the VIP queue is being emptied, another new VIP task were to line up, the `unlock()` code above would not know to wait for it. Once the "last" VIP resolves (which unblocks the newly arrived VIP on the chain), the `unlock()` code would unblock the next-in-line non-VIP task, leading to a race, and breaking mutual exclusion.
 
 For more details, the code contains extensive comments, which will not be re-iterated here.
-
-### Cancellable Promises: A Detour
-
-Another challenge faced, involved an unfortunate detour, a first attempt at implementing VIP tasks. Instead of using two Promise chains as described above, I had initially attempted to "re-wire" the one Promise chain and tack VIP tasks onto the beginning of it, re-wiring the `.then` relationships, hijacking the `reject` method of the Promises to cancel the existing Promise chain, but none of it worked. It turned out that Promises are immutable, and trying to hack them to be mutable was not the right strategy.
