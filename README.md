@@ -15,17 +15,17 @@ Even though Node.js is single-threaded, race conditions are still possible if th
 For instance, two asynchronous tasks A and B may attempt to read from an account balance (say, $0), and then increment it, each by $50. The correct resulting balance should be $100. But what if, in a single-threaded environment, the order of operations happened to be like so:
 
 ```
-A: Read Balance from DB: $0
+A: Read Balance from DB: $0;
 
-A: Calculate: (0 + 50 = 50) --> Context-Switch!
+A: Calculate 0 + 50 = 50; --> Context-Switch!
 
-B: Read Balance from DB: $0 (stale read) --> Context-Switch!
+B: Read Balance from DB: $0; (stale read) --> Context-Switch!
 
-A: Write Balance to DB: $50 (Updated!) --> Context-Switch!
+A: Write Balance to DB: $50; (Updated!) --> Context-Switch!
 
-B: Calculate: (0 + 50 = 50) (based on stale value)
+B: Calculate 0 + 50 = 50; (based on stale value)
 
-B: Write Balance to DB: $50 (overwrite A's update)
+B: Write Balance to DB: $50; (overwrite A's update)
 ```
 
 In this case, the resulting erroneous balance is $50 because both tasks were racing to read/write to the same resource.
