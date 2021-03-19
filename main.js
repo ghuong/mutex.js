@@ -1,10 +1,10 @@
-const VipMutex = require("./vipMutex");
+const makeVipMutex = require("./vipMutex");
 
 const randomDelay = () =>
   new Promise((resolve) => setTimeout(resolve, Math.random() * 100));
 
 let balance = 0; // global balance
-const mutex = new VipMutex();
+const mutex = new makeVipMutex();
 
 async function loadBalance() {
   await randomDelay(); // simulate delay retrieving data from db
