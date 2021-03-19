@@ -44,6 +44,10 @@ Run `main.js` to demonstrate two examples with and without the use of a mutex:
 node main.js
 ```
 
+Run the code in [JS Bin](https://jsbin.com/salaqalaka/1/edit?js,console):
+
+<a class="jsbin-embed" href="https://jsbin.com/salaqalaka/1/embed?js,console">JS Bin on jsbin.com</a><script src="https://static.jsbin.com/js/embed.min.js?4.1.8"></script>
+
 ## Usage
 
 To use the basic mutex in `mutex.js`:
