@@ -4,7 +4,7 @@
 
 This is a Promise-based Mutex implementation for preventing race conditions in concurrent (but non-parallel) programs in Node.js.
 
-The twist is that it provided the option for a task to "skip the line" waiting for the mutex, jumping to the very front as a "VIP" task. See later section `VipMutex.js`.
+The twist is that it provided the option for a task to "skip the line" waiting for the mutex, jumping to the very front as a "VIP" task. See later section `vipMutex.js`.
 
 ### Are Race Conditions Possible in Node.js?
 
