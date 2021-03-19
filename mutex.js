@@ -35,20 +35,20 @@ function makeMutex() {
   };
 
   /**
-   * First, wait for mutex lock, then run the passed in callback, finally, release the lock
-   * @param {Function} callback function (can be async) containing the critical code
-   * @param args arguments to pass into callback
-   * @returns return value of callback
-   * Usage: `await mutex.run(<callback function>)` or `mutex.run(..).then(result => ..)`
+   * First, wait for mutex lock, then run the passed in executor, finally, release the lock
+   * @param {Function} executor function (can be async) containing the critical code
+   * @param args arguments to pass into executor
+   * @returns return value of executor (or its fulfilled result if it's a promise)
+   * Usage: `await mutex.run(<executor function>)` or `mutex.run(..).then(result => ..)`
    * Advanced:
    *   const runCriticalPath = async (x, y) => { <do critical stuff> };
    *   const runProtected = async (...args) => await mutex.run(runCriticalPath, ...args);
    *   await runProtected("foo", "bar");
    */
-  const run = async (callback, ...args) => {
+  const run = async (executor, ...args) => {
     const unlock = await lock();
     try {
-      return await callback(...args);
+      return await executor(...args);
     } finally {
       unlock();
     }

@@ -66,18 +66,22 @@ class VipMutex {
    * @returns an unlock function that yields mutex to VIP tasks first, before non-VIP
    */
   _getKey(resolve) {
-    console.log("getting key function");
-    return async () => await this._mtx.run(async () => {
-      console.log("unlocking within key");
-      // At this point, the current mutex-holder is done
-      // Before unlocking, check if there are VIP tasks waiting and let them go first
-      this._vipKey(); // unlocks the next-in-line (first) VIP, which will eventually unlock all of them
-      await this._vipLock; // wait for the last VIP to finish
-      this._initVipLock(); // now that VIP queue is empty, re-initialize the first empty VIP lock
+    return async () => {
+      // await this._mtx.run(async () => {
+      const _unlockMtx = await this._mtx.lock();
+      try {
+        // At this point, the current mutex-holder is done
+        // Before unlocking, check if there are VIP tasks waiting and let them go first
+        this._vipKey(); // unlocks the next-in-line (first) VIP, which will eventually unlock all of them
+        await this._vipLock; // wait for the last VIP to finish
+        this._initVipLock(); // now that VIP queue is empty, re-initialize the first empty VIP lock
 
-      this._count--; // finally, remove ourselves from the count
-      resolve(); // let the next non-VIP task go
-    });
+        this._count--; // finally, remove ourselves from the count
+        resolve(); // let the next non-VIP task go
+      } finally {
+        _unlockMtx();
+      }
+    };
   }
 
   /**
@@ -100,36 +104,20 @@ class VipMutex {
       // VIP tasks will line up in the VIP queue to skip ahead of non-VIP tasks waiting
       // await this._mtx.run(async () => { //? needs to be async?
       const _unlockMtx = await this._mtx.lock();
-        try {
-          if (this._count > 0) {
-            // if someone's holding mutex, line up as VIP, mutex-holder will unlock us, but if not, line up normally (see end of function)
-            console.log("lining up as VIP")
-            return this._lineUpAsVip(myKey, myLock);
-          }
-        } finally { _unlockMtx(); }
+      try {
+        if (this._count > 0) {
+          // if someone's holding mutex, line up as VIP, mutex-holder will unlock us, but if not, line up normally (see end of function)
+          return this._lineUpAsVip(myKey, myLock);
+        }
+      } finally {
+        _unlockMtx();
+      }
       // });
     } else {
-      myLock = new Promise((resolve) => 
-        (myKey = async () => {
-          const _unlockMtx = await this._mtx.lock();
-          try {
-            console.log("unlocking within key");
-            // At this point, the current mutex-holder is done
-            // Before unlocking, check if there are VIP tasks waiting and let them go first
-            this._vipKey(); // unlocks the next-in-line (first) VIP, which will eventually unlock all of them
-            await this._vipLock; // wait for the last VIP to finish
-            this._initVipLock(); // now that VIP queue is empty, re-initialize the first empty VIP lock
-
-            this._count--; // finally, remove ourselves from the count
-            resolve(); // let the next non-VIP task go
-            // this._getKey(resolve))); // Non-VIP
-          } finally { _unlockMtx(); }
-        })
-      );
+      myLock = new Promise((resolve) => (myKey = this._getKey(resolve)));
     }
 
     // if non-VIP, or if nobody's currently holding mutex, just line up normally
-    console.log("lining up normally");
     return this._lineUp(myKey, myLock); // caller should await for their myKey function
   }
 
@@ -160,7 +148,7 @@ class VipMutex {
    * First, wait for mutex lock, then run the passed in executor function, and finally, release the lock.
    * @param {Function} executor function (can be async) containing the critical code
    * @param args arguments to pass into executor function
-   * @returns return value of executor function
+   * @returns return value of executor function (or its fulfilled result if it's a promise)
    * Usage: `await mutex.run(<executor function>)` or `mutex.run(..).then(result => ..)`
    * Advanced:
    *   const runCriticalPath = async (x, y) => { <do critical stuff> };
