@@ -38,7 +38,7 @@ function makeVipMutex() {
    * @param {Promise} myLock the promise that is resolved by calling myKey
    * @returns a promise of myKey
    */
-  const _lineUp = (myKey, myLock) => {
+  const _waitInLine = (myKey, myLock) => {
     const promiseOfKey = _lock.then(() => myKey);
     _lock = myLock; // next task must wait on myLock
     _count++; // add ourselves to the count
@@ -51,7 +51,7 @@ function makeVipMutex() {
    * @param {Promise} myLock the promise that is resolved by calling myKey
    * @returns a promise of myKey
    */
-  const _lineUpAsVip = (myKey, myLock) => {
+  const _waitInLineVip = (myKey, myLock) => {
     const promiseOfKey = _vipLock.then(() => myKey);
     _vipLock = myLock;
     return promiseOfKey;
@@ -88,46 +88,50 @@ function makeVipMutex() {
    * const unlock = await mutex.lock();
    * try { <do critical path> } finally { unlock(); }
    */
-  const lock = async (_isVIP = false) => {
+  const lock = () => {
     let myKey; // this is a function returned to caller to let them unlock once they're done
-    let myLock; // represents the caller's lock, which only they may unlock (by calling myKey)
 
-    if (_isVIP) {
-      myLock = new Promise((resolve) => (myKey = async () => resolve())); // myLock is resolved by myKey... simple!
+    // represents the caller's lock, which only they may unlock (by calling myKey)
+    const myLock = new Promise((resolve) => (myKey = _getKey(resolve)));
 
-      // VIP tasks will line up in the VIP queue to skip ahead of non-VIP tasks waiting
-      const _unlockMtx = await _mtx.lock();
-      try {
-        if (_count > 0) {
-          // if someone's holding mutex, line up as VIP, mutex-holder will unlock us, but if not, line up normally (see end of function)
-          return _lineUpAsVip(myKey, myLock);
-        }
-      } finally {
-        _unlockMtx();
-      }
-      // });
-    } else {
-      myLock = new Promise((resolve) => (myKey = _getKey(resolve)));
-    }
-
-    // if non-VIP, or if nobody's currently holding mutex, just line up normally
-    return _lineUp(myKey, myLock); // caller should await for their myKey function
+    return _waitInLine(myKey, myLock); // caller should await for their myKey function
   };
 
   /**
    * * Same as .lock, but skip the line as a VIP task (will still line up behind other VIP tasks)
-   * @returns a promise that eventually (when it's your turn) resolves to the "unlock" function
-   * (which must be called when you're done with the mutex)
    * ! Failure to call unlock will result in all requests waiting for the mutex to wait forever!
    * * Usage:
    * const unlock = await mutex.lockVip();
    * try { <do critical path> } finally { unlock(); }
    */
-  const lockVip = async () => await lock(true);
+  const lockVip = async () => {
+    let myKey;
+    const myLock = new Promise((resolve) => (myKey = async () => resolve())); // myLock is resolved by myKey... simple!
 
-  // Wraps the given executor function in lock / unlock calls with try-finally blocks
-  const _run = async (executor, vip, ...args) => {
-    const unlock = await lock(vip);
+    const _unlockMtx = await _mtx.lock(); // prevent race-condition w/ mutex-unlocker
+    try {
+      if (_count > 0) return _waitInLineVip(myKey, myLock); // line up as VIP, mutex-holder will unlock us
+    } finally {
+      _unlockMtx();
+    }
+
+    // else if there's no mutex-holder (to unlock VIPs), then just line up as non-VIP
+    return _waitInLine(myKey, myLock);
+  };
+
+  /**
+   * First, wait for mutex lock, then run the passed in executor function, and finally, release the lock.
+   * @param {Function} executor function (can be async) containing the critical code
+   * @param args arguments to pass into executor
+   * @returns return value of executor (or its fulfilled result if it's a promise)
+   * Usage: `await mutex.run(<executor>)` or `mutex.run(..).then(result => ..)`
+   * Advanced:
+   *   const unsafe = async (x, y) => { <do critical stuff> };
+   *   const safe = async (...args) => await mutex.run(unsafe, ...args);
+   *   await safe("foo", "bar");
+   */
+  const run = async (executor, ...args) => {
+    const unlock = await lock();
     try {
       return await executor(...args);
     } finally {
@@ -136,24 +140,17 @@ function makeVipMutex() {
   };
 
   /**
-   * First, wait for mutex lock, then run the passed in executor function, and finally, release the lock.
-   * @param {Function} executor function (can be async) containing the critical code
-   * @param args arguments to pass into executor function
-   * @returns return value of executor function (or its fulfilled result if it's a promise)
-   * Usage: `await mutex.run(<executor function>)` or `mutex.run(..).then(result => ..)`
-   * Advanced:
-   *   const runCriticalPath = async (x, y) => { <do critical stuff> };
-   *   const runProtected = async (...args) => await mutex.run(runCriticalPath, ...args);
-   *   await runProtected("foo", "bar");
+   * Same as .run, but skip the line as a VIP task (will still line up behind other VIP tasks)
+   * * Usage: `await mutex.runVip(<executor>)` or `mutex.runVip(..).then(result => <etc.>)`
    */
-  const run = async (executor, ...args) =>
-    await _run(executor, false, ...args);
-
-  /**
-   * Same as .run, but VIP tasks are served first
-   */
-  const runVip = async (executor, ...args) =>
-    await _run(executor, true, ...args);
+  const runVip = async (executor, ...args) => {
+    const unlock = await lockVip();
+    try {
+      return await executor(...args);
+    } finally {
+      unlock();
+    }
+  };
 
   return {
     run,
