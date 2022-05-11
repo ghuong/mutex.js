@@ -1,5 +1,7 @@
 # Mutex.js
 
+See the [live web demo here](https://mutex-gary.netlify.app), or [run the code in JS Bin](https://jsbin.com/salaqalaka/1/edit?js,console) (does not include `vipMutex.js` implementation).
+
 ## About
 
 This is a Promise-based Mutex implementation for preventing race conditions in concurrent (but non-parallel) programs in Node.js.
